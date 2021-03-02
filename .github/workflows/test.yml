@@ -1,0 +1,57 @@
+name: linux
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        SETUP: ["init.sh"]
+    steps:
+    - uses: actions/checkout@v2
+    - uses: cvmfs-contrib/github-action-cvmfs@v1
+      with:
+        cvmfs_repositories: 'sw.hsf.org,sw-nightlies.hsf.org,sft-nightlies.cern.ch,sft.cern.ch,geant4.cern.ch'
+
+    - name: Start container
+      run: |
+        docker run -it --name CI_container -v ${GITHUB_WORKSPACE}:/Package -v /cvmfs:/cvmfs:shared -d centos:centos7 /bin/bash
+    - name: Setup container
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        yum install -q -y file git make automake glibc-devel unzip patch python3 bzip2 rsync which diffutils crontabs;\
+        curl -L -o spack.tar.gz https://gitlab.cern.ch/key4hep/k4-deploy/-/jobs/artifacts/master/raw/key4hep-spack_centos7-cvmfs.tar.gz?job=setup_spack_push; \
+        tar xfz spack.tar.gz;'
+
+    - name: Compile
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source spack/share/spack/setup-env.sh;\
+        spack dev-build  k4fwcore@master;\
+        '
+
+    - name: Test
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source spack/share/spack/setup-env.sh;\
+        spack load k4fwcore@master;\
+        spack load edm4hep;\
+        spack load cmake;\
+        rm spack-build-*.txt;\
+        cd spack-build-*;\
+        ctest --output-on-failure;'
+
+    - name: Downstream Package CMake Test
+      run: |
+        docker exec CI_container /bin/bash -c 'cd ./Package;\
+        source /cvmfs/sw.hsf.org/contrib/linux-centos7-broadwell/gcc-8.3.0/setup.sh;\
+        source spack/share/spack/setup-env.sh;\
+        spack load k4fwcore@master;\
+        spack load cmake;\
+        cd test/downstream-project-cmake-test;\
+        mkdir build install;\
+        cd build;\
+        cmake ..;\
+        make'

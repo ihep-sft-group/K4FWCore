@@ -1,4 +1,5 @@
 *~
+spack*
 *.pyc
 *.root
 *.png
@@ -9,6 +10,7 @@
 *.gdml
 
 *.log
+build
 build.*.log
 Makefile
 NMake
